@@ -1,0 +1,204 @@
+{
+  "name": "photo-searchly-ai",
+  "version": "1.0.0",
+  "description": "AI-powered natural language photo search with Google Drive integration",
+  "main": "main.js",
+  "author": {
+    "name": "Proliant Data",
+    "email": "you@yourdomain.com"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env NODE_ENV=development electron .",
+    "server": "node server.js",
+    "build": "electron-builder",
+    "build:win": "node scripts/download-models.js && cross-env NODE_ENV=production electron-builder --win nsis portable",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
+    "dist": "cross-env NODE_ENV=production electron-builder --publish always",
+    "postinstall": "electron-builder install-app-deps",
+    "build:store": "node scripts/download-models.js && cross-env NODE_ENV=production electron-builder --win appx",
+    "download-models": "node scripts/download-models.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "csurf": "^1.11.0",
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "googleapis": "^128.0.0",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "cross-env": "^7.0.3"
+  },
+  "build": {
+    "appId": "com.proliantdata.searchlyai",
+    "productName": "Searchly AI",
+    "copyright": "Copyright \u00a9 2025 Proliant Data",
+    "icon": "assets/icon",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "server.js",
+      "public/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.map",
+      "!node_modules/.bin/**",
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/*.test.js",
+      "!**/__tests__/**"
+    ],
+    "mac": {
+      "category": "public.app-category.photography",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "publisherName": "Proliant Data",
+      "verifyUpdateCodeSignature": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "category": "Graphics",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Searchly AI",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerSidebar": "assets/installer-sidebar.bmp",
+      "uninstallerSidebar": "assets/installer-sidebar.bmp",
+      "installerHeader": "assets/installer-header.bmp",
+      "license": "LICENSE.txt",
+      "artifactName": "Searchly-AI-Setup-${version}.exe"
+    },
+    "dmg": {
+      "title": "Install Photo Searchly AI",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "your-github-username",
+      "repo": "searchly-ai"
+    },
+    "portable": {
+      "artifactName": "Searchly-AI-Portable-${version}.exe"
+    },
+    "appx": {
+      "applicationId": "ProliantData.SearchlyAI",
+      "backgroundColor": "#000000",
+      "displayName": "Searchly AI",
+      "identityName": "ProliantData.SearchlyAI",
+      "publisher": "CN=Proliant Data",
+      "publisherDisplayName": "Proliant Data",
+      "languages": [
+        "en-US"
+      ],
+      "artifactName": "Searchly-AI-${version}.msix",
+      "showNameOnTiles": true,
+      "setBuildNumber": true
+    },
+    "extraResources": [
+      {
+        "from": "build/models",
+        "to": "models",
+        "filter": [
+          "*.onnx"
+        ]
+      },
+      {
+        "from": "resources/python_server",
+        "to": "python_server",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
+  "productName": "Searchly AI"
+}
