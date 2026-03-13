@@ -185,6 +185,10 @@
     },
     "extraResources": [
       {
+        "from": ".env",
+        "to": ".env"
+      },
+      {
         "from": "build/models",
         "to": "models",
         "filter": [
