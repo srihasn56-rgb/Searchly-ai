@@ -35,6 +35,7 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".heic", ".avif"}
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB — allows large base64 batches
 CORS(app)
 
 # ── Global model state ─────────────────────────────────────────────────────────
@@ -510,6 +511,47 @@ def delete_files():
             del _index_cache[folder]
 
     return jsonify({"deleted": deleted, "failed": failed})
+
+
+@app.route("/index_blobs", methods=["POST"])
+def index_blobs():
+    """Index images sent as base64 blobs — used for Google Drive photos."""
+    import base64, tempfile
+    data = request.get_json(force=True)
+    images = data.get("images", [])  # [{id, name, b64, mime}]
+
+    ensure_model_loaded()
+
+    results = {}
+    tmp_files = []
+    try:
+        paths = []
+        id_map = {}
+        for img in images:
+            try:
+                raw = base64.b64decode(img["b64"])
+                mime = img.get("mime", "image/jpeg")
+                suffix = ".png" if "png" in mime else ".webp" if "webp" in mime else ".jpg"
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                tmp.write(raw)
+                tmp.close()
+                tmp_files.append(tmp.name)
+                paths.append(tmp.name)
+                id_map[tmp.name] = img["id"]
+            except Exception as e:
+                print(f"[BlobIndex] Skip {img.get('name','?')}: {e}", flush=True)
+
+        if paths:
+            embeddings, valid_paths = encode_images_batch(paths, batch_size=get_optimal_batch_size())
+            for path, emb in zip(valid_paths, embeddings):
+                results[id_map[path]] = emb.tolist()
+
+    finally:
+        for f in tmp_files:
+            try: os.unlink(f)
+            except: pass
+
+    return jsonify({"ok": True, "embeddings": results})
 
 
 @app.route("/read_image", methods=["POST"])
