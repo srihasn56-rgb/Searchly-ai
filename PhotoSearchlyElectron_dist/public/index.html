@@ -733,6 +733,14 @@
 
         async function loadGoogleDriveFiles(folderId = null) {
             try {
+                // Cancel any in-progress indexing before starting new folder
+                indexingCancelled = true;
+                try {
+                    if (typeof _pyPort !== 'undefined' && _pyPort) {
+                        fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => {});
+                    }
+                } catch(e) {}
+
                 document.getElementById("backBtn").classList.add("active");
                 document.getElementById("changeFolderBtn").classList.add("active");
                 document.getElementById('uploadSection').style.display = 'none';
@@ -761,34 +769,59 @@
                     return;
                 }
 
-                // ── Drive Cache Key: folder id + file count + sorted file ids ─
-                const cacheKey = 'drive:' + (folderId || 'root') + ':' + allFiles.length + ':' +
-                    allFiles.map(f => f.id).sort().join(',').substring(0, 100);
+                // ── Drive Cache Key: folder id only (stable across additions) ─
+                const cacheKey = 'drive:' + (folderId || 'root');
 
                 // ── Try loading from cache first ─────────────────────────────
                 document.getElementById('statusText').textContent = 'Checking cache...';
                 const cached = await loadEmbeddingsFromCache(cacheKey);
-                if (cached && cached.data && Object.keys(cached.data).length === allFiles.length) {
-                    console.log('[Drive] Cache hit! Loading', Object.keys(cached.data).length, 'embeddings instantly');
+
+                // Build set of all current file IDs from Drive
+                const driveFileIds = new Set(allFiles.map(f => f.id));
+
+                if (cached && cached.data) {
+                    // Load all cached embeddings into memory
                     for (const [id, emb] of Object.entries(cached.data)) {
-                        models.embeddings[id] = {
-                            vector: emb.vector,
-                            driveFileId: id,
-                            url: `${API_URL}/api/drive/download/${id}`,
-                            filename: emb.filename || id
-                        };
+                        if (driveFileIds.has(id)) {  // only keep if still exists in Drive
+                            models.embeddings[id] = {
+                                vector: emb.vector,
+                                driveFileId: id,
+                                url: `${API_URL}/api/drive/download/${id}`,
+                                filename: emb.filename || id
+                            };
+                        }
                     }
-                    const count = Object.keys(models.embeddings).length;
-                    document.getElementById('spinner').style.display = 'none';
-                    document.getElementById('imageCount').textContent = `${count} photos`;
-                    document.getElementById('statusText').textContent = `✅ ${count} photos ready to search!`;
+
+                    // Find new files not in cache
+                    const cachedIds = new Set(Object.keys(cached.data));
+                    const newFiles = allFiles.filter(f => !cachedIds.has(f.id));
+
+                    if (newFiles.length === 0) {
+                        // Perfect cache hit — nothing new
+                        const count = Object.keys(models.embeddings).length;
+                        console.log('[Drive] Cache hit! All', count, 'photos loaded instantly');
+                        document.getElementById('spinner').style.display = 'none';
+                        document.getElementById('imageCount').textContent = `${count} photos`;
+                        document.getElementById('statusText').textContent = `✅ ${count} photos ready to search!`;
+                        document.getElementById('searchInput').disabled = false;
+                        document.getElementById('searchBtn').disabled   = false;
+                        setTimeout(() => {
+                            const badge = document.getElementById('statusBadge');
+                            if (badge) { badge.style.transition = 'opacity 0.7s ease'; badge.style.opacity = '0'; setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700); }
+                        }, 3000);
+                        return;
+                    }
+
+                    // Have some cached + some new — only index new ones
+                    console.log(`[Drive] Cache partial hit: ${Object.keys(models.embeddings).length} cached, ${newFiles.length} new to index`);
+                    const cachedCount = Object.keys(models.embeddings).length;
+                    document.getElementById('imageCount').textContent = `${cachedCount}/${allFiles.length} photos`;
+                    document.getElementById('statusText').textContent = `⚡ ${cachedCount} cached · scanning ${newFiles.length} new photos...`;
                     document.getElementById('searchInput').disabled = false;
                     document.getElementById('searchBtn').disabled   = false;
-                    setTimeout(() => {
-                        const badge = document.getElementById('statusBadge');
-                        if (badge) { badge.style.transition = 'opacity 0.7s ease'; badge.style.opacity = '0'; setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700); }
-                    }, 3000);
-                    return;
+
+                    // Only index the new files
+                    allFiles = newFiles;
                 }
 
                 // ── No cache — index all photos ──────────────────────────────
@@ -1201,10 +1234,18 @@
         }
 
         function resetApp() {
-            // Cancel any in-progress indexing
+            // Cancel any in-progress indexing silently
             indexingCancelled = true;
+            try {
+                if (typeof _pyPort !== 'undefined' && _pyPort) {
+                    fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => {});
+                }
+            } catch(e) {}
+
             models.embeddings = {};
             processedCount = 0;
+            _currentFolder = null;
+
             document.getElementById("resultsGrid").innerHTML = "";
             document.getElementById("searchSection").classList.remove("active");
             document.getElementById("uploadSection").style.display = "block";
@@ -1214,10 +1255,25 @@
             document.getElementById("imageCount").textContent = "";
             document.getElementById("statusText").textContent = "";
             document.getElementById("spinner").style.display = "none";
+
+            const badge = document.getElementById('statusBadge');
+            if (badge) {
+                badge.style.transition = 'none';
+                badge.style.opacity = '0';
+                badge.style.display = 'none';
+            }
         }
 
         async function selectFolder() {
             try {
+                // Cancel any in-progress indexing before starting new folder
+                indexingCancelled = true;
+                try {
+                    if (typeof _pyPort !== 'undefined' && _pyPort) {
+                        fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => {});
+                    }
+                } catch(e) {}
+
                 let folderPath = null;
                 let fileList   = null;
 

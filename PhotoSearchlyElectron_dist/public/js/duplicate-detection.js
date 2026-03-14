@@ -90,7 +90,7 @@ async function showDuplicates() {
             const r = await fetch(`http://127.0.0.1:${_pyPort}/duplicates`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folder: _currentFolder, threshold: 0.99 })
+                body: JSON.stringify({ folder: _currentFolder, threshold: 0.97 })
             });
             if (r.ok) {
                 const data = await r.json();
@@ -193,7 +193,7 @@ function createDuplicateGroupHTML(group, groupIndex) {
         <div class="duplicate-group">
             <div class="group-header">
                 <span class="group-title">Group ${groupIndex + 1} - ${group.length} duplicates</span>
-                <span class="group-similarity">${((group[1]?.similarity ?? group[1]?.score ?? 0) * 100).toFixed(1)}% similar</span>
+                <span class="group-similarity">${(group[1]?.similarity * 100 || 100).toFixed(1)}% similar</span>
             </div>
             <div class="group-images">
                 ${group.map((img, imgIndex) => `
@@ -206,7 +206,7 @@ function createDuplicateGroupHTML(group, groupIndex) {
                         <img src="${img.url}" alt="${img.filename}" loading="lazy">
                         <div class="duplicate-info">
                             <div class="duplicate-filename">${img.filename}</div>
-                            ${imgIndex > 0 ? `<div class="duplicate-similarity">${((img.similarity ?? img.score ?? 0) * 100).toFixed(1)}% match</div>` : ''}
+                            ${imgIndex > 0 ? `<div class="duplicate-similarity">${(img.similarity * 100).toFixed(1)}% match</div>` : ''}
                         </div>
                     </div>
                 `).join('')}
@@ -299,14 +299,41 @@ async function deleteSelectedDuplicates() {
         }
     });
 
-    if (typeof showInfo === 'function') showInfo(`Deleting ${urlsToDelete.length} file(s)...`, 2000);
+    if (typeof showInfo === 'function') showInfo(`Deleting ${urlsToDelete.length} file(s)...`, 99999);
+
+    // Show a persistent progress toast that updates live
+    function updateDeleteProgress(done, total) {
+        const badge = document.getElementById('statusBadge');
+        const text  = document.getElementById('statusText');
+        if (badge && text) {
+            badge.style.display = 'flex';
+            badge.style.opacity = '1';
+            text.textContent = `🗑️ Deleting ${done}/${total} photos...`;
+        }
+    }
+    function clearDeleteProgress() {
+        const badge = document.getElementById('statusBadge');
+        const text  = document.getElementById('statusText');
+        if (badge && text) {
+            badge.style.transition = 'opacity 0.7s ease';
+            badge.style.opacity = '0';
+            setTimeout(() => { if (badge) badge.style.display = 'none'; text.textContent = ''; }, 700);
+        }
+    }
+    updateDeleteProgress(0, urlsToDelete.length);
 
     // Use real disk deletion — URL-based lookup first, then absolute-path fallback
     let deletedCount = 0, failedCount = 0;
     if (typeof deleteFilesFromStorage === 'function') {
-        const { deletedFiles, failedFiles } = await deleteFilesFromStorage(urlsToDelete, pathsToDelete);
-        deletedCount = deletedFiles.length;
-        failedCount  = failedFiles.length;
+        // Delete one by one so we can show live progress
+        for (let i = 0; i < urlsToDelete.length; i++) {
+            updateDeleteProgress(i + 1, urlsToDelete.length);
+            const { deletedFiles, failedFiles } = await deleteFilesFromStorage(
+                [urlsToDelete[i]], pathsToDelete[i] ? [pathsToDelete[i]] : []
+            );
+            deletedCount += deletedFiles.length;
+            failedCount  += failedFiles.length;
+        }
     } else {
         // Fallback: index-only removal
         urlsToDelete.forEach(url => {
@@ -318,6 +345,7 @@ async function deleteSelectedDuplicates() {
     // Remove selected items from modal DOM
     selected.forEach(item => item.remove());
 
+    clearDeleteProgress();
     if (deletedCount > 0 && typeof showSuccess === 'function')
         showSuccess(`✅ Deleted ${deletedCount} duplicate${deletedCount > 1 ? 's' : ''} from disk`);
     if (failedCount > 0 && typeof showError === 'function')
