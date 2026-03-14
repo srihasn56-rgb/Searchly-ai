@@ -104,4 +104,4 @@ Contributions welcome! Fork the repo, create a feature branch, and open a Pull R
  
 MIT License — see [LICENSE.txt](LICENSE.txt)
 
-Made with love by [Proliant Data]([https://proliantdata.com](https://www.proliantdatallc.com/))
+Made with love by [Proliant Data](https://www.proliantdatallc.com/)
