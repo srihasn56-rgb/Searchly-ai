@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Searchly AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #04050a;
+      --surface: #0c0e18;
+      --border: rgba(255,255,255,0.07);
+      --blue: #3b82f6;
+      --blue-dim: rgba(59,130,246,0.12);
+      --orange: #f97316;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --green: #10b981;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 300;
+      line-height: 1.75;
+      min-height: 100vh;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Glow */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 740px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* Header */
+    header {
+      padding: 48px 0 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3b82f6, #a855f7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px rgba(59,130,246,0.3);
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text);
+    }
+
+    .logo-name span { color: var(--orange); }
+
+    .page-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(2rem, 5vw, 3rem);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #e2e8f0 30%, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .page-meta {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    /* Privacy-first badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.25);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--green);
+      width: fit-content;
+    }
+
+    .badge::before { content: '🔒'; }
+
+    /* Summary cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .summary-card .icon { font-size: 1.4rem; }
+    .summary-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .summary-card .value { font-size: 0.9rem; font-weight: 500; color: var(--text); }
+
+    /* Sections */
+    .section {
+      margin-bottom: 40px;
+      padding: 28px 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .section::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--blue), transparent);
+      border-radius: 4px 0 0 4px;
+    }
+
+    .section-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 6px;
+    }
+
+    .section h2 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .section p {
+      font-size: 0.925rem;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    .section p:last-child { margin-bottom: 0; }
+
+    /* Highlight box */
+    .highlight {
+      background: var(--blue-dim);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      color: #93c5fd;
+    }
+
+    /* List */
+    .check-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .check-list li {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      padding-left: 24px;
+      position: relative;
+    }
+
+    .check-list li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    /* Contact */
+    .contact-block {
+      margin-top: 48px;
+      padding: 32px;
+      background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08));
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 16px;
+      text-align: center;
+    }
+
+    .contact-block h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .contact-block p { font-size: 0.9rem; color: var(--muted); margin-bottom: 16px; }
+
+    .contact-link {
+      display: inline-block;
+      padding: 10px 24px;
+      background: var(--blue);
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+
+    .contact-link:hover { opacity: 0.85; }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    footer p { font-size: 0.8rem; color: var(--muted); }
+    footer a { color: var(--blue); text-decoration: none; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="logo-row" href="https://github.com/your-github-username/searchly-ai">
+      <div class="logo-icon">🔍</div>
+      <span class="logo-name">Searchly <span>AI</span></span>
+    </a>
+    <h1 class="page-title">Privacy Policy</h1>
+    <p class="page-meta">Effective date: March 2025 &nbsp;·&nbsp; Last updated: March 9, 2025</p>
+    <div class="badge">Your photos never leave your device</div>
+  </header>
+
+  <!-- Summary cards -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <span class="icon">📤</span>
+      <span class="label">Data Collected</span>
+      <span class="value">None</span>
+    </div>
+    <div class="summary-card">
+      <span class="icon">🧠</span>
+      <span class="label">AI Processing</span>
+      <span class="value">100% On-Device</span>
+    </div>
+    <div class="summary-card">
+      <span class="icon">☁️</span>
+      <span class="label">Cloud Storage</span>
+      <span class="value">Never used</span>
+    </div>
+    <div class="summary-card">
+      <span class="icon">📊</span>
+      <span class="label">Analytics</span>
+      <span class="value">None</span>
+    </div>
+  </div>
+
+  <!-- Sections -->
+  <div class="section">
+    <div class="section-num">Section 01</div>
+    <h2>Overview</h2>
+    <p>Searchly AI ("the app") is a desktop application developed by Proliant Data. This privacy policy explains how the app handles your data — or more accurately, how it does not.</p>
+    <div class="highlight">
+      Searchly AI is designed to work entirely on your local device. The AI model that powers photo search (OpenAI CLIP) runs directly on your computer using ONNX Runtime. No photos, embeddings, or personal data are ever sent to Proliant Data or any third party.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 02</div>
+    <h2>Information We Do Not Collect</h2>
+    <p>Proliant Data does not collect, store, or process any of the following:</p>
+    <ul class="check-list">
+      <li>Your photos or image files</li>
+      <li>AI-generated embeddings or vectors from your photos</li>
+      <li>Your search queries</li>
+      <li>Your name, email address, or any personal identifiers</li>
+      <li>Usage analytics or telemetry data</li>
+      <li>Crash reports or error logs</li>
+      <li>Device information or fingerprints</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 03</div>
+    <h2>Google Drive Integration</h2>
+    <p>Searchly AI offers optional integration with Google Drive. If you choose to connect your Google account:</p>
+    <ul class="check-list">
+      <li>Authentication is handled directly between your device and Google using the standard OAuth 2.0 protocol</li>
+      <li>Your Google access tokens are stored only in your device's memory and are never written to disk</li>
+      <li>Tokens are cleared immediately when you close the app or click "Disconnect"</li>
+      <li>Proliant Data never receives or stores your Google credentials or tokens</li>
+      <li>Photo data from Google Drive is downloaded directly to your device's memory for AI processing and is never forwarded to any third party</li>
+    </ul>
+    <p>Your use of Google Drive is subject to <a href="https://policies.google.com/privacy" style="color:#3b82f6;">Google's Privacy Policy</a>.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 04</div>
+    <h2>On-Device AI Processing</h2>
+    <p>The AI model used by Searchly AI (OpenAI CLIP, distributed by Hugging Face) is downloaded once from a public CDN and cached by your browser/app. After that, all AI inference runs locally using WebAssembly (ONNX Runtime).</p>
+    <p>This means your photos are never uploaded to any AI service, API, or cloud processing platform. The model runs entirely within the app on your own hardware.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 05</div>
+    <h2>Third-Party Services</h2>
+    <p>Searchly AI interacts with the following third-party services only when you explicitly use the corresponding features:</p>
+    <ul class="check-list">
+      <li><strong style="color:#e2e8f0">Google Drive API</strong> — only when you click "Connect Google Drive"</li>
+      <li><strong style="color:#e2e8f0">Hugging Face CDN</strong> — one-time download of the CLIP model files on first launch</li>
+    </ul>
+    <p>No advertising networks, tracking pixels, or analytics SDKs are included in Searchly AI.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 06</div>
+    <h2>Children's Privacy</h2>
+    <p>Searchly AI does not knowingly collect any information from children under the age of 13. The app does not collect any personal information from any users, regardless of age.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-num">Section 07</div>
+    <h2>Changes to This Policy</h2>
+    <p>If we make material changes to this privacy policy, we will update the "Last updated" date at the top of this page. We encourage you to review this page periodically. Continued use of the app after changes constitutes acceptance of the updated policy.</p>
+  </div>
+
+  <!-- Contact -->
+  <div class="contact-block">
+    <h3>Questions about privacy?</h3>
+    <p>We're happy to answer any questions about how Searchly AI handles your data.</p>
+    <a class="contact-link" href="mailto:privacy@proliantdata.com">privacy@proliantdata.com</a>
+  </div>
+
+  <footer>
+    <p>© 2025 Proliant Data · Searchly AI</p>
+    <a href="https://github.com/your-github-username/searchly-ai">← Back to GitHub</a>
+  </footer>
+
+</div>
+</body>
+</html>
