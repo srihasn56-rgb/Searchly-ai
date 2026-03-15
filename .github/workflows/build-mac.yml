@@ -59,8 +59,8 @@ jobs:
       # Step 8 — Create .env file from GitHub secrets
       - name: Create .env file
         run: |
-          echo "CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
-          echo "CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
+          echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
+          echo "CLIENT_SECRET=${{ secrets.CLIENT_SECRET }}" >> .env
           echo "REDIRECT_URI=http://localhost:5500/oauth2callback" >> .env
           echo "PORT=5500" >> .env
           echo "NODE_ENV=production" >> .env
