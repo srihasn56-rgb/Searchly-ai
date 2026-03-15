@@ -3,8 +3,8 @@ name: Build macOS
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:  # allows manual trigger from GitHub UI
+      - "v*"
+  workflow_dispatch: # allows manual trigger from GitHub UI
 
 jobs:
   build-mac:
@@ -19,14 +19,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
 
       # Step 3 — Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       # Step 4 — Install Node dependencies
       - name: Install Node dependencies
@@ -69,7 +69,8 @@ jobs:
       - name: Build Mac app
         run: npm run build:mac
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false  # skip code signing for now
+        CSC_IDENTITY_AUTO_DISCOVERY: false
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       # Step 10 — Upload .dmg to GitHub Release
       - name: Upload Mac build to Release
