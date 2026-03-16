@@ -505,7 +505,7 @@
             <div class="status-bar">
                 <div class="status-badge" id="statusBadge">
                     <div class="spinner" id="spinner" style="display:none"></div>
-                    <span id="statusText">Getting ready...</span>
+                    <span id="statusText">Initializing AI models...</span>
                 </div>
             </div>
 
@@ -524,8 +524,8 @@
                             </svg>
                         </div>
                         <div class="btn-info">
-                            <div class="btn-title">Select Local Folder</div>
-                            <div class="btn-desc">Browse and index photos from your device</div>
+                            <div class="btn-title">Choose a Folder</div>
+                            <div class="btn-desc">Search through photos saved on your computer</div>
                         </div>
                     </button>
 
@@ -738,22 +738,28 @@
                 try {
                     document.getElementById('statusText').textContent = 'Connecting to Google Drive...';
 
-                    // Get auth URL from backend
+                    // Check if already authenticated — skip OAuth if already signed in
+                    try {
+                        const checkResp = await fetch(`${API_URL}/auth/check`);
+                        const { authenticated } = await checkResp.json();
+                        if (authenticated) {
+                            await showDriveFolderPicker();
+                            return;
+                        }
+                    } catch (e) { }
+
+                    // Not authenticated — start OAuth
                     const response = await fetch(`${API_URL}/auth/google`);
                     const { authUrl } = await response.json();
-
-                    // Open OAuth window (works in both browser and Electron)
                     const authWindow = window.open(authUrl, 'Google Drive Auth', 'width=520,height=680,menubar=no,toolbar=no');
 
-                    // Poll auth status until complete or timed out
                     let pollCount = 0;
-                    const MAX_POLLS = 300; // 5 minutes at 1s intervals
+                    const MAX_POLLS = 300;
                     const checkAuth = setInterval(async () => {
                         pollCount++;
                         try {
                             const checkResponse = await fetch(`${API_URL}/auth/check`);
                             const { authenticated } = await checkResponse.json();
-
                             if (authenticated) {
                                 clearInterval(checkAuth);
                                 try { if (authWindow && !authWindow.closed) authWindow.close(); } catch (e) { }
@@ -763,10 +769,20 @@
                         } catch (error) {
                             console.error('Auth check error:', error);
                         }
-                        // Stop polling if window was closed manually or timeout reached
                         if (pollCount >= MAX_POLLS || (authWindow && authWindow.closed)) {
+                            // Window closed — do one final auth check before giving up
+                            // (race condition: window closes 2s after success, poll may not have caught it yet)
+                            try {
+                                const finalCheck = await fetch(`${API_URL}/auth/check`);
+                                const { authenticated: finalAuth } = await finalCheck.json();
+                                if (finalAuth) {
+                                    clearInterval(checkAuth);
+                                    await showDriveFolderPicker();
+                                    return;
+                                }
+                            } catch (e) { }
                             clearInterval(checkAuth);
-                            document.getElementById('statusText').textContent = 'Authentication cancelled.';
+                            document.getElementById('statusText').textContent = '';
                         }
                     }, 1000);
 
@@ -798,8 +814,8 @@
                     </div>
                     <div style="padding:16px 24px;border-top:1px solid #334155;display:flex;gap:10px;justify-content:flex-end">
                         <button onclick="document.getElementById('driveFolderModal').remove()" style="background:#334155;border:none;border-radius:8px;color:#e2e8f0;padding:10px 20px;cursor:pointer;font-size:13px">Cancel</button>
-                        <button id="driveSelectFolderBtn" onclick="confirmDriveFolderSelection()" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border:none;border-radius:8px;color:#fff;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">Index This Folder</button>
-                        <button onclick="loadDriveEntireDrive()" style="background:linear-gradient(135deg,#10b981,#059669);border:none;border-radius:8px;color:#fff;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">All of Drive</button>
+                        <button id="driveSelectFolderBtn" onclick="confirmDriveFolderSelection()" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border:none;border-radius:8px;color:#fff;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">Search This Folder</button>
+                        <button onclick="loadDriveEntireDrive()" style="background:linear-gradient(135deg,#10b981,#059669);border:none;border-radius:8px;color:#fff;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">All of My Drive</button>
                     </div>
                 </div>`;
                 document.body.appendChild(modal);
@@ -834,7 +850,10 @@
                         list.appendChild(back);
                     }
                     if (folders.length === 0) {
-                        list.innerHTML += '<div style="color:#64748b;text-align:center;padding:24px;font-size:13px">No subfolders — use "Index This Folder" to index current location</div>';
+                        const empty = document.createElement('div');
+                        empty.style.cssText = 'color:#64748b;text-align:center;padding:24px;font-size:13px';
+                        empty.textContent = 'No subfolders — use "Search This Folder" to index current location';
+                        list.appendChild(empty);
                         return;
                     }
                     folders.forEach(folder => {
@@ -870,16 +889,24 @@
 
             async function loadGoogleDriveFiles(folderId = null) {
                 try {
+                    // Cancel any in-progress indexing before starting new folder
+                    indexingCancelled = true;
+                    try {
+                        if (typeof _pyPort !== 'undefined' && _pyPort) {
+                            fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => { });
+                        }
+                    } catch (e) { }
+
                     document.getElementById("backBtn").classList.add("active");
                     document.getElementById("changeFolderBtn").classList.add("active");
                     document.getElementById('uploadSection').style.display = 'none';
                     document.getElementById('searchSection').classList.add('active');
                     document.getElementById('spinner').style.display = 'block';
-                    document.getElementById('statusText').textContent = 'Loading images from Google Drive...';
+                    document.getElementById('statusText').textContent = 'Loading photos from Google Drive...';
 
                     models.embeddings = {};
 
-                    // Fetch all file metadata (fast — no image data yet)
+                    // ── Fetch ALL file metadata (paginated) ──────────────────────
                     let allFiles = [], pageToken = null;
                     do {
                         let url = `${API_URL}/api/drive/files?pageSize=200`;
@@ -891,77 +918,208 @@
                         pageToken = data.nextPageToken;
                     } while (pageToken);
 
-                    console.log(`Found ${allFiles.length} Drive images`);
+                    console.log(`[Drive] Found ${allFiles.length} images`);
+                    if (allFiles.length === 0) {
+                        document.getElementById('spinner').style.display = 'none';
+                        document.getElementById('statusText').textContent = 'No photos found in this folder.';
+                        return;
+                    }
+
+                    // ── Drive Cache Key: folder id only (stable across additions) ─
+                    const cacheKey = 'drive:' + (folderId || 'root');
+
+                    // ── Try loading from cache first ─────────────────────────────
+                    document.getElementById('statusText').textContent = 'Checking cache...';
+                    const cached = await loadEmbeddingsFromCache(cacheKey);
+
+                    // Build set of all current file IDs from Drive
+                    const driveFileIds = new Set(allFiles.map(f => f.id));
+
+                    if (cached && cached.data) {
+                        // Load all cached embeddings into memory
+                        for (const [id, emb] of Object.entries(cached.data)) {
+                            if (driveFileIds.has(id)) {  // only keep if still exists in Drive
+                                models.embeddings[id] = {
+                                    vector: emb.vector,
+                                    driveFileId: id,
+                                    url: `${API_URL}/api/drive/download/${id}`,
+                                    filename: emb.filename || id
+                                };
+                            }
+                        }
+
+                        // Find new files not in cache
+                        const cachedIds = new Set(Object.keys(cached.data));
+                        const newFiles = allFiles.filter(f => !cachedIds.has(f.id));
+
+                        if (newFiles.length === 0) {
+                            // Perfect cache hit — nothing new
+                            const count = Object.keys(models.embeddings).length;
+                            console.log('[Drive] Cache hit! All', count, 'photos loaded instantly');
+                            document.getElementById('spinner').style.display = 'none';
+                            document.getElementById('imageCount').textContent = `${count} photos`;
+                            document.getElementById('statusText').textContent = `✅ ${count} photos ready to search!`;
+                            document.getElementById('searchInput').disabled = false;
+                            document.getElementById('searchBtn').disabled = false;
+                            setTimeout(() => {
+                                const badge = document.getElementById('statusBadge');
+                                if (badge) { badge.style.transition = 'opacity 0.7s ease'; badge.style.opacity = '0'; setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700); }
+                            }, 3000);
+                            return;
+                        }
+
+                        // Have some cached + some new — only index new ones
+                        console.log(`[Drive] Cache partial hit: ${Object.keys(models.embeddings).length} cached, ${newFiles.length} new to index`);
+                        const cachedCount = Object.keys(models.embeddings).length;
+                        document.getElementById('imageCount').textContent = `${cachedCount}/${allFiles.length} photos`;
+                        document.getElementById('statusText').textContent = `⚡ ${cachedCount} cached · scanning ${newFiles.length} new photos...`;
+                        document.getElementById('searchInput').disabled = false;
+                        document.getElementById('searchBtn').disabled = false;
+
+                        // Only index the new files
+                        allFiles = newFiles;
+                    }
+
+                    // ── No cache — index all photos ──────────────────────────────
                     totalToProcess = allFiles.length;
                     processedCount = 0;
                     startTime = Date.now();
-                    document.getElementById('statusText').textContent = `Processing ${allFiles.length} Drive images...`;
-
-                    // Process with controlled parallelism — DRIVE_PARALLEL at a time
-                    async function processOne(fileInfo) {
-                        try {
-                            // Use thumbnailLink if available (tiny, fast ~10KB vs 2MB full image)
-                            // CLIP still works well on 256px thumbnails
-                            let blob;
-                            if (fileInfo.thumbnailLink) {
-                                const thumbUrl = fileInfo.thumbnailLink.replace('=s220', '=s512');
-                                try {
-                                    const r = await fetch(thumbUrl);
-                                    if (r.ok) { blob = await r.blob(); }
-                                } catch (e) { /* fall through to full download */ }
-                            }
-                            if (!blob) {
-                                const r = await fetch(`${API_URL}/api/drive/download/${fileInfo.id}`);
-                                blob = await r.blob();
-                            }
-                            const file = new File([blob], fileInfo.name, { type: fileInfo.mimeType || 'image/jpeg' });
-                            const result = await processImageImproved(file, fileInfo.id);
-                            models.embeddings[fileInfo.id] = {
-                                ...result.embedding,
-                                driveFileId: fileInfo.id,
-                                url: `${API_URL}/api/drive/download/${fileInfo.id}`
-                            };
-                            processedCount = Math.min(processedCount + 1, totalToProcess);
-                            const elapsed = (Date.now() - startTime) / 1000;
-                            const speed = processedCount / Math.max(elapsed, 0.1);
-                            const eta = Math.max((totalToProcess - processedCount) / speed, 0);
-                            const pct = Math.min(Math.round((processedCount / totalToProcess) * 100), 100);
-                            document.getElementById('imageCount').textContent = `${processedCount}/${totalToProcess} photos`;
-                            document.getElementById('statusText').textContent =
-                                `⚡ ${pct}% | ${speed.toFixed(1)}/s | ETA: ${eta.toFixed(0)}s`;
-                        } catch (e) {
-                            console.warn(`[Drive] Failed: ${fileInfo.name}`, e.message);
-                        }
-                    }
-
-                    // Semaphore: run DRIVE_PARALLEL downloads at once
                     indexingCancelled = false;
-                    let idx = 0;
-                    async function worker() {
-                        while (idx < allFiles.length) {
-                            if (indexingCancelled) return;
-                            const file = allFiles[idx++];
-                            await processOne(file);
-                            if (processedCount === 1) {
-                                document.getElementById('searchInput').disabled = false;
-                                document.getElementById('searchBtn').disabled = false;
+                    document.getElementById('imageCount').textContent = `0/${allFiles.length} photos`;
+                    document.getElementById('statusText').textContent = `✨ Scanning ${allFiles.length} photos...`;
+
+                    const DRIVE_BATCH = 16;
+
+                    async function downloadDriveBlob(fileInfo) {
+                        if (fileInfo.thumbnailLink) {
+                            try {
+                                const r = await fetch(fileInfo.thumbnailLink.replace('=s220', '=s512'));
+                                if (r.ok) return await r.blob();
+                            } catch (e) { }
+                        }
+                        const r = await fetch(`${API_URL}/api/drive/download/${fileInfo.id}`);
+                        return await r.blob();
+                    }
+
+                    function blobToBase64(blob) {
+                        return new Promise((res, rej) => {
+                            const reader = new FileReader();
+                            reader.onload = () => res(reader.result.split(',')[1]);
+                            reader.onerror = rej;
+                            reader.readAsDataURL(blob);
+                        });
+                    }
+
+                    for (let i = 0; i < allFiles.length; i += DRIVE_BATCH) {
+                        if (indexingCancelled) break;
+                        const chunk = allFiles.slice(i, i + DRIVE_BATCH);
+
+                        // Download chunk in parallel
+                        const blobs = await Promise.all(chunk.map(f => downloadDriveBlob(f).catch(() => null)));
+
+                        // Convert to base64
+                        const images = [];
+                        for (let j = 0; j < chunk.length; j++) {
+                            if (!blobs[j]) continue;
+                            try {
+                                const b64 = await blobToBase64(blobs[j]);
+                                images.push({ id: chunk[j].id, name: chunk[j].name, b64, mime: blobs[j].type || 'image/jpeg' });
+                            } catch (e) { console.warn('[Drive] Base64 failed for', chunk[j].name, e); }
+                        }
+                        if (!images.length) continue;
+
+                        // Send to Python for fast CLIP indexing
+                        let pythonOk = false;
+                        if (_pyAvailable && _pyPort) {
+                            try {
+                                const controller = new AbortController();
+                                const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+                                const resp = await fetch(`http://127.0.0.1:${_pyPort}/index_blobs`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ images }),
+                                    signal: controller.signal
+                                });
+                                clearTimeout(timeout);
+                                if (resp.ok) {
+                                    const result = await resp.json();
+                                    if (result.ok) {
+                                        pythonOk = true;
+                                        for (const [id, emb] of Object.entries(result.embeddings)) {
+                                            const fi = allFiles.find(f => f.id === id);
+                                            models.embeddings[id] = {
+                                                vector: emb,
+                                                driveFileId: id,
+                                                url: `${API_URL}/api/drive/download/${id}`,
+                                                filename: fi?.name || id
+                                            };
+                                        }
+                                    }
+                                }
+                            } catch (e) { console.warn('[Drive] Python batch failed, using JS fallback', e.message); }
+                        }
+
+                        // JS fallback if Python unavailable
+                        if (!pythonOk) {
+                            for (let j = 0; j < chunk.length; j++) {
+                                if (!blobs[j] || indexingCancelled) continue;
+                                try {
+                                    const file = new File([blobs[j]], chunk[j].name, { type: blobs[j].type });
+                                    const result = await processImageImproved(file, chunk[j].id);
+                                    models.embeddings[chunk[j].id] = {
+                                        ...result.embedding,
+                                        driveFileId: chunk[j].id,
+                                        url: `${API_URL}/api/drive/download/${chunk[j].id}`
+                                    };
+                                } catch (e2) { console.warn('[Drive] JS fallback failed for', chunk[j].name, e2); }
                             }
                         }
+
+                        processedCount = Math.min(i + DRIVE_BATCH, allFiles.length);
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        const speed = processedCount / Math.max(elapsed, 0.1);
+                        const eta = Math.max((allFiles.length - processedCount) / speed, 0);
+                        const pct = Math.min(Math.round((processedCount / allFiles.length) * 100), 100);
+                        document.getElementById('imageCount').textContent = `${processedCount}/${allFiles.length} photos`;
+                        document.getElementById('statusText').textContent = `📸 ${pct}% done · about ${eta.toFixed(0)}s left`;
+                        if (processedCount >= DRIVE_BATCH) {
+                            document.getElementById('searchInput').disabled = false;
+                            document.getElementById('searchBtn').disabled = false;
+                        }
                     }
-                    await Promise.all(Array.from({ length: DRIVE_PARALLEL }, worker));
 
                     document.getElementById('spinner').style.display = 'none';
-                    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-                    document.getElementById('statusText').textContent =
-                        `✅ ${Object.keys(models.embeddings).length} Drive images ready | ${totalTime}s`;
+                    const finalCount = Object.keys(models.embeddings).length;
+                    document.getElementById('statusText').textContent = `✅ ${finalCount} photos ready to search!`;
+                    document.getElementById('imageCount').textContent = `${finalCount} photos`;
+                    document.getElementById('searchInput').disabled = false;
+                    document.getElementById('searchBtn').disabled = false;
+
+                    // ── Save to cache for next time ──────────────────────────────
+                    if (!indexingCancelled && finalCount > 0) {
+                        try {
+                            const serializable = {};
+                            for (const [id, emb] of Object.entries(models.embeddings)) {
+                                serializable[id] = { vector: emb.vector, filename: emb.filename || id };
+                            }
+                            const db = await openEmbeddingDB();
+                            await new Promise((resolve, reject) => {
+                                const tx = db.transaction('folders', 'readwrite');
+                                const req = tx.objectStore('folders').put({ data: serializable, savedAt: Date.now(), count: finalCount }, cacheKey);
+                                req.onsuccess = () => resolve();
+                                req.onerror = e => reject(e.target.error);
+                            });
+                            console.log(`[Drive] Cache saved: ${finalCount} embeddings`);
+                        } catch (e) { console.warn('[Drive] Cache save failed:', e); }
+                    }
+
+                    // Fade badge after 5s
                     setTimeout(() => {
-                        const badge = document.getElementById('statusBadge');
-                        if (badge) {
-                            badge.style.transition = 'opacity 0.7s ease';
-                            badge.style.opacity = '0';
-                            setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700);
+                        if (!indexingCancelled) {
+                            const badge = document.getElementById('statusBadge');
+                            if (badge) { badge.style.transition = 'opacity 0.7s ease'; badge.style.opacity = '0'; setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700); }
                         }
-                    }, 3500);
+                    }, 5000);
 
                 } catch (error) {
                     console.error('Drive error:', error);
@@ -971,19 +1129,6 @@
                 }
             }
 
-            // ==================== REST OF THE CODE (SAME AS BEFORE) ====================
-
-            // ── Parallel Worker Pool ────────────────────────────────────────────────
-            // Mirrors Python's encode_images_batch(): N workers each with their own
-            // ONNX session encode images truly in parallel (like threading on CPU cores).
-            let _workerPool = [];     // active Worker instances
-            let _workerReady = [];     // Promise<void> — resolves when worker finished init
-            let _pendingMap = {};     // id → { resolve, reject }
-            let _workerBusy = [];     // bool per worker
-            let _nextJobId = 0;
-
-            const NUM_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 8);
-            const WORKER_SCRIPT = 'js/indexer-worker.js';
 
             async function initWorkerPool(modelBuffer) {
                 // Spin up workers, each gets its own copy of the model buffer
@@ -1211,7 +1356,7 @@
                         </div>
                         <div class="empty-title">No Results Found</div>
                         <div class="empty-desc">
-                            No images matched your search with sufficient confidence.<br>
+                            No images matched your search.<br>
                             Try different search terms.
                         </div>
                     </div>
@@ -1245,10 +1390,18 @@
             }
 
             function resetApp() {
-                // Cancel any in-progress indexing
+                // Cancel any in-progress indexing silently
                 indexingCancelled = true;
+                try {
+                    if (typeof _pyPort !== 'undefined' && _pyPort) {
+                        fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => { });
+                    }
+                } catch (e) { }
+
                 models.embeddings = {};
                 processedCount = 0;
+                _currentFolder = null;
+
                 document.getElementById("resultsGrid").innerHTML = "";
                 document.getElementById("searchSection").classList.remove("active");
                 document.getElementById("uploadSection").style.display = "block";
@@ -1258,10 +1411,25 @@
                 document.getElementById("imageCount").textContent = "";
                 document.getElementById("statusText").textContent = "";
                 document.getElementById("spinner").style.display = "none";
+
+                const badge = document.getElementById('statusBadge');
+                if (badge) {
+                    badge.style.transition = 'none';
+                    badge.style.opacity = '0';
+                    badge.style.display = 'none';
+                }
             }
 
             async function selectFolder() {
                 try {
+                    // Cancel any in-progress indexing before starting new folder
+                    indexingCancelled = true;
+                    try {
+                        if (typeof _pyPort !== 'undefined' && _pyPort) {
+                            fetch(`http://127.0.0.1:${_pyPort}/index/cancel`).catch(() => { });
+                        }
+                    } catch (e) { }
+
                     let folderPath = null;
                     let fileList = null;
 
@@ -1327,7 +1495,7 @@
                             else newFiles.push(item);
                         }
 
-                        document.getElementById('statusText').textContent = `⚡ Loading ${cachedItems.length} photos...`;
+                        document.getElementById('statusText').textContent = `⚡ Loading ${cachedItems.length} images...`;
                         let restoredCount = 0;
                         const RBATCH = 15;
                         for (let i = 0; i < cachedItems.length; i += RBATCH) {
@@ -1349,8 +1517,8 @@
                                 } catch (e) { console.warn('[Cache] restore failed', item.filename, e.message); }
                             }));
                             const pct = Math.round((restoredCount / cachedItems.length) * 100);
-                            document.getElementById('imageCount').textContent = `${restoredCount}/${cachedItems.length} photos`;
-                            document.getElementById('statusText').textContent = `⚡ Loading photos... ${pct}%`;
+                            document.getElementById('imageCount').textContent = `${restoredCount}/${cachedItems.length} images`;
+                            document.getElementById('statusText').textContent = `⚡ Loading... ${pct}%`;
                             if (i === 0 && restoredCount > 0) {
                                 document.getElementById('searchInput').disabled = false;
                                 document.getElementById('searchBtn').disabled = false;
@@ -1359,7 +1527,7 @@
                         if (newFiles.length === 0) {
                             document.getElementById('spinner').style.display = 'none';
                             const savedDate = new Date(cached.savedAt).toLocaleDateString();
-                            document.getElementById('statusText').textContent = `✅ ${restoredCount} photos ready to search!`;
+                            document.getElementById('statusText').textContent = `⚡ ${restoredCount} images loaded from cache (scanned ${savedDate})`;
                             document.getElementById('imageCount').textContent = `${restoredCount} images`;
                             document.getElementById('searchInput').disabled = false;
                             document.getElementById('searchBtn').disabled = false;
@@ -1384,8 +1552,8 @@
                 indexingCancelled = false;
                 const total = fileList.length;
 
-                document.getElementById('statusText').textContent = `✨ Scanning... (${total} images)`;
-                document.getElementById('imageCount').textContent = `0/${total} photos`;
+                document.getElementById('statusText').textContent = ` scanning... (${total} images)`;
+                document.getElementById('imageCount').textContent = `0/${total} images`;
 
                 return new Promise((resolve) => {
                     const es = new EventSource(
@@ -1427,25 +1595,25 @@
                                     if (evt.type === 'init') {
                                         document.getElementById('statusText').textContent =
                                             evt.cached > 0
-                                                ? `⚡ ${evt.cached} photos ready · scanning ${evt.new} new...`
-                                                : `🚀 Scanning ${evt.total} photos...`;
+                                                ? `⚡ ${evt.cached} cached · scanning ${evt.new} new images...`
+                                                : `scanning ${evt.total} images...`;
                                     } else if (evt.type === 'progress') {
                                         const elapsed = Math.max((Date.now() - t0) / 1000, 0.1);
                                         const speed = evt.done / elapsed;
                                         const eta = Math.max((evt.total - evt.done) / (speed || 1), 0);
                                         const pct = Math.round((evt.done / evt.total) * 100);
-                                        document.getElementById('imageCount').textContent = `${evt.done}/${evt.total} photos`;
+                                        document.getElementById('imageCount').textContent = `${evt.done}/${evt.total} images`;
                                         document.getElementById('statusText').textContent =
-                                            `📸 ${pct}% done · about ${eta.toFixed(0)}s left`;
+                                            ` ${pct}% | ${speed.toFixed(1)} img/s | ETA: ${eta.toFixed(0)}s`;
                                         if (evt.done >= 1) {
                                             document.getElementById('searchInput').disabled = false;
                                             document.getElementById('searchBtn').disabled = false;
                                         }
                                     } else if (evt.type === 'done') {
                                         document.getElementById('spinner').style.display = 'none';
-                                        document.getElementById('imageCount').textContent = `${evt.count} photos`;
+                                        document.getElementById('imageCount').textContent = `${evt.count} images`;
                                         document.getElementById('statusText').textContent =
-                                            `✅ ${evt.count} photos ready to search!`;
+                                            `✅ ${evt.count} images scanned in ${evt.time}s`;
                                         document.getElementById('searchInput').disabled = false;
                                         document.getElementById('searchBtn').disabled = false;
                                         // Load thumbnails for the index
@@ -1453,7 +1621,7 @@
                                         setTimeout(() => { const badge = document.getElementById('statusBadge'); if (badge) { badge.style.transition = 'opacity 0.7s ease'; badge.style.opacity = '0'; setTimeout(() => { if (badge) badge.style.display = 'none'; }, 700); } }, 3500);
                                         resolve();
                                     } else if (evt.type === 'error') {
-                                        showError('Something went wrong. Please try again.');
+                                        showError('Python indexing failed: ' + evt.message);
                                         document.getElementById('spinner').style.display = 'none';
                                         resolve();
                                     }
@@ -1463,7 +1631,7 @@
                         resolve();
                     }).catch(err => {
                         console.error('[PyIndex] Fetch error:', err);
-                        showError('');
+                        showError('Python backend error — falling back to JS indexing');
                         _pyAvailable = false;
                         selectFolder();   // retry with JS
                         resolve();
@@ -1557,8 +1725,8 @@
 
                 document.getElementById('statusText').textContent =
                     alreadyCached > 0
-                        ? `⚡ ${alreadyCached} photos ready · scanning ${fileList.length} new...`
-                        : `🚀 Scanning ${fileList.length} photos...`;
+                        ? `⚡ ${alreadyCached} from cache · Indexing ${fileList.length} new image${fileList.length !== 1 ? 's' : ''}...`
+                        : `🚀 Indexing ${fileList.length} images with ${NUM_WORKERS} parallel workers...`;
 
                 // ── Step 1: Boot worker pool with the image model buffer ──────────
                 let useWorkers = false;
@@ -1587,7 +1755,7 @@
                         })();
 
                         if (imgBuffer) {
-                            document.getElementById('statusText').textContent = `⚡ Getting things ready...`;
+                            document.getElementById('statusText').textContent = `⚙️ Starting ${NUM_WORKERS} parallel workers...`;
                             await initWorkerPool(imgBuffer);
                             useWorkers = true;
                             console.log(`[Parallel] Using ${NUM_WORKERS}-worker pool`);
@@ -1665,10 +1833,10 @@
 
                         document.getElementById('imageCount').textContent =
                             alreadyCached > 0
-                                ? `${done}/${grandTotal} photos`
-                                : `${processedCount}/${totalToProcess} photos`;
+                                ? `${done}/${grandTotal} images (${processedCount}/${totalToProcess} new)`
+                                : `${processedCount}/${totalToProcess} images`;
                         document.getElementById('statusText').textContent =
-                            `📸 ${progress}% done · about ${eta.toFixed(0)}s left`;
+                            `⚡ ${progress}% | ${speed.toFixed(1)} img/s | ETA: ${eta.toFixed(0)}s`;
 
                         // Enable search after first image is done
                         if (processedCount === 1) {
@@ -1708,8 +1876,8 @@
                 const finalCount = Object.keys(models.embeddings).length;
                 document.getElementById('statusText').textContent =
                     alreadyCached > 0
-                        ? `✅ ${finalCount} photos ready to search!`
-                        : `✅ ${finalCount} photos ready to search!`;
+                        ? `✅ ${finalCount} images ready · ${processedCount} new in ${totalTime}s`
+                        : `✅ ${finalCount} images scanned in ${totalTime}s`;
 
                 // Persist cache
                 if (cacheKey && !indexingCancelled && processedCount > 0) {
@@ -1777,8 +1945,8 @@
                         }));
 
                         // Update progress while restoring
-                        document.getElementById('imageCount').textContent = `${restored}/${total} photos`;
-                        document.getElementById('statusText').textContent = `⚡ Loading photos... ${Math.round(restored / total * 100)}%`;
+                        document.getElementById('imageCount').textContent = `${restored}/${total} images`;
+                        document.getElementById('statusText').textContent = `⚡ Loading... ${Math.round(restored / total * 100)}%`;
                         // Enable search as soon as first batch is ready
                         if (i === 0 && restored > 0) {
                             document.getElementById('searchInput').disabled = false;
@@ -1786,11 +1954,11 @@
                         }
                     }
 
-                    document.getElementById('imageCount').textContent = `${restored} photos`;
+                    document.getElementById('imageCount').textContent = `${restored}/${restored} images`;
                     document.getElementById('spinner').style.display = 'none';
                     const savedDate = new Date(cached.savedAt).toLocaleDateString();
                     document.getElementById('statusText').textContent =
-                        `✅ ${restored} photos ready to search!`;
+                        `⚡ ${restored} images loaded from cache (indexed ${savedDate})`;
                     document.getElementById('searchInput').disabled = false;
                     document.getElementById('searchBtn').disabled = false;
 
@@ -1893,10 +2061,10 @@
                 // ── 1 & 2: Electron — read from bundled disk file ──────────────
                 if (window.electronAPI?.readModelFile && diskPath) {
                     try {
-                        status.textContent = `Getting ready...`;
+                        status.textContent = `📦 Loading ${label}...`;
                         const r = await window.electronAPI.readModelFile(diskPath);
                         if (r.success) {
-                            status.textContent = '';
+                            status.textContent = `✅ ${label} ready`;
                             // Decode base64 → ArrayBuffer
                             const binary = atob(r.base64);
                             const buffer = new ArrayBuffer(binary.length);
@@ -1918,13 +2086,13 @@
                 if (cache) {
                     const cached = await cache.match(cacheKey);
                     if (cached) {
-                        status.textContent = '';
+                        status.textContent = `✅ ${label} loaded from cache`;
                         return await cached.arrayBuffer();
                     }
                 }
 
                 // ── 4: Download from HuggingFace ────────────────────────────────
-                status.textContent = `⏳ Setting up for the first time...`;
+                status.textContent = `⬇️ Downloading ${label} (one-time only)...`;
                 const resp = await fetch(url);
                 if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
 
@@ -1962,7 +2130,7 @@
                 if (cache) {
                     const cached = await cache.match(cacheKey);
                     if (cached) {
-                        document.getElementById('statusText').textContent = '';
+                        document.getElementById('statusText').textContent = `✅ ${label} loaded from cache`;
                         const buf = await cached.arrayBuffer();
                         return buf;
                     }
@@ -1988,10 +2156,10 @@
                     if (total > 0) {
                         const pct = Math.round((received / total) * 100);
                         document.getElementById('statusText').textContent =
-                            `⏳ First time setup... ${pct}%`;
+                            `⬇️ Downloading ${label}... ${pct}% (${(received / 1024 / 1024).toFixed(1)} MB)`;
                     } else {
                         document.getElementById('statusText').textContent =
-                            `⏳ First time setup...`;
+                            `⬇️ Downloading ${label}... ${(received / 1024 / 1024).toFixed(1)} MB`;
                     }
                 }
 
@@ -2020,7 +2188,7 @@
             async function initModels() {
                 try {
                     document.getElementById('spinner').style.display = 'block';
-                    document.getElementById('statusText').textContent = 'Getting ready...';
+                    document.getElementById('statusText').textContent = 'Loading AI models...';
 
                     // Main-thread ONNX config (used by text model for search)
                     ort.env.wasm.numThreads = Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2));
@@ -2040,21 +2208,21 @@
 
                     // Load both models (disk → cache → download)
                     const imgBuffer = await loadModel(imgDiskPath, MODEL_IMG_URL, MODEL_IMG_KEY, 'Image Model');
-                    document.getElementById('statusText').textContent = 'Almost ready...';
+                    document.getElementById('statusText').textContent = 'Initializing image model...';
                     const imgSession = await ort.InferenceSession.create(imgBuffer);
 
                     const txtBuffer = await loadModel(txtDiskPath, MODEL_TXT_URL, MODEL_TXT_KEY, 'Text Model');
-                    document.getElementById('statusText').textContent = 'Almost ready...';
+                    document.getElementById('statusText').textContent = 'Initializing text model...';
                     const txtSession = await ort.InferenceSession.create(txtBuffer);
 
                     models.imgSession = imgSession;
                     models.txtSession = txtSession;
 
                     document.getElementById('spinner').style.display = 'none';
-                    document.getElementById('statusText').textContent = '';
+                    document.getElementById('statusText').textContent = '🚀 Ready — select a folder to begin';
                 } catch (error) {
                     console.error('[Model] Init failed:', error);
-                    document.getElementById('statusText').textContent = '❌ Something went wrong. Please restart the app.';
+                    document.getElementById('statusText').textContent = '❌ Model loading failed: ' + error.message;
                     document.getElementById('spinner').style.display = 'none';
                 }
             }
