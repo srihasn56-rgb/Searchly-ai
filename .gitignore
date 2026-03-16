@@ -137,3 +137,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+build/models/
+resources/
+python_backend/build/
+python_backend/dist/
