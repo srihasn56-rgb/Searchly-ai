@@ -67,10 +67,10 @@ jobs:
 
       # Step 9 — Build Electron app for Mac
       - name: Build Mac app
-        run: npm run build:mac
+        run: npx electron-builder --mac --publish never
         env:
-        CSC_IDENTITY_AUTO_DISCOVERY: false
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 10 — Upload .dmg to GitHub Release
       - name: Upload Mac build to Release
@@ -78,8 +78,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/*.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 11 — Upload as artifact (for manual trigger)
       - name: Upload artifact
