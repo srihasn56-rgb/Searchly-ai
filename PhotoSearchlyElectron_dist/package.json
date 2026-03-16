@@ -163,7 +163,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
+      "owner": "Srihass",
       "repo": "searchly-ai"
     },
     "portable": {
