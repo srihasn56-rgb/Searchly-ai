@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-
 <div align="center">
  
 <img src="assets/icon.png" width="120" alt="Searchly AI Logo" />
@@ -106,4 +104,4 @@ Contributions welcome! Fork the repo, create a feature branch, and open a Pull R
  
 MIT License — see [LICENSE.txt](LICENSE.txt)
 
-# Made with love by [Proliant Data](https://www.proliantdatallc.com/)
+Made with love by [Proliant Data](https://www.proliantdatallc.com/)
