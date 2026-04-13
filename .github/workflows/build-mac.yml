@@ -6,6 +6,9 @@ on:
 jobs:
   build-mac:
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: PhotoSearchlyElectron_dist
 
     steps:
       - name: Checkout repository
@@ -15,7 +18,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -62,5 +64,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Searchly-AI-Mac
-          path: dist/*.dmg
+          path: PhotoSearchlyElectron_dist/dist/*.dmg
           retention-days: 7
