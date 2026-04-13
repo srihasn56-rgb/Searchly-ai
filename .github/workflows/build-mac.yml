@@ -1,0 +1,66 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Install Python dependencies
+        run: |
+          cd python_backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Download ONNX models
+        run: |
+          mkdir -p build/models
+          curl -L -o build/models/clip-image-vit-32-float32.onnx "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-image-vit-32-float32.onnx"
+          curl -L -o build/models/clip-text-vit-32-float32-int32.onnx "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-text-vit-32-float32-int32.onnx"
+
+      - name: Build Python backend for Mac
+        run: |
+          cd python_backend
+          pyinstaller searchly_server.spec
+          mkdir -p ../resources/python_server
+          cp -r dist/searchly_server/ ../resources/python_server/
+
+      - name: Create .env file
+        run: |
+          echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
+          echo "CLIENT_SECRET=${{ secrets.CLIENT_SECRET }}" >> .env
+          echo "REDIRECT_URI=http://localhost:5500/oauth2callback" >> .env
+          echo "PORT=5500" >> .env
+          echo "NODE_ENV=production" >> .env
+
+      - name: Build Mac app
+        run: npx electron-builder --mac --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Searchly-AI-Mac
+          path: dist/*.dmg
+          retention-days: 7
