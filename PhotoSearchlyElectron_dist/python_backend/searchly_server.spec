@@ -5,20 +5,17 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 
 block_cipher = None
 
-# --collect-all ensures both code AND data files are included
 flask_datas,    flask_bins,    flask_hiddens    = collect_all('flask')
 cors_datas,     cors_bins,     cors_hiddens     = collect_all('flask_cors')
 clip_datas,     clip_bins,     clip_hiddens     = collect_all('open_clip')
 torch_datas,    torch_bins,    torch_hiddens    = collect_all('torch')
-tv_datas,       tv_bins,       tv_hiddens       = collect_all('torchvision')
 pil_datas,      pil_bins,      pil_hiddens      = collect_all('PIL')
 numpy_datas,    numpy_bins,    numpy_hiddens    = collect_all('numpy')
 certifi_datas,  certifi_bins,  certifi_hiddens  = collect_all('certifi')
-psutil_datas,   psutil_bins,   psutil_hiddens   = collect_all('psutil')
 
-all_datas    = flask_datas   + cors_datas   + clip_datas   + torch_datas   + tv_datas   + pil_datas   + numpy_datas   + certifi_datas   + psutil_datas
-all_binaries = flask_bins    + cors_bins    + clip_bins    + torch_bins    + tv_bins    + pil_bins    + numpy_bins    + certifi_bins    + psutil_bins
-all_hiddens  = flask_hiddens + cors_hiddens + clip_hiddens + torch_hiddens + tv_hiddens + pil_hiddens + numpy_hiddens + certifi_hiddens + psutil_hiddens + [
+all_datas    = flask_datas   + cors_datas   + clip_datas   + torch_datas   + pil_datas   + numpy_datas   + certifi_datas
+all_binaries = flask_bins    + cors_bins    + clip_bins    + torch_bins    + pil_bins    + numpy_bins    + certifi_bins
+all_hiddens  = flask_hiddens + cors_hiddens + clip_hiddens + torch_hiddens + pil_hiddens + numpy_hiddens + certifi_hiddens + [
     'werkzeug', 'werkzeug.serving', 'werkzeug.routing',
     'click', 'itsdangerous', 'jinja2', 'markupsafe',
     'torch._C', 'torch.nn', 'torch.nn.functional',
@@ -52,7 +49,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,          # FIXED: must be True for Flask server to work
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
