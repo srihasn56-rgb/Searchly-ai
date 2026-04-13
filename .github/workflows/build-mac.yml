@@ -1,62 +1,49 @@
 name: Build macOS
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:  # allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-mac:
     runs-on: macos-latest
 
     steps:
-      # Step 1 — Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2 — Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
 
-      # Step 3 — Setup Python
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # Step 4 — Install Node dependencies
       - name: Install Node dependencies
         run: npm install
 
-      # Step 5 — Install Python dependencies
       - name: Install Python dependencies
         run: |
           cd python_backend
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # Step 6 — Download ONNX models (needed for build)
       - name: Download ONNX models
         run: |
           mkdir -p build/models
-          curl -L -o build/models/clip-image-vit-32-float32.onnx \
-            "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-image-vit-32-float32.onnx"
-          curl -L -o build/models/clip-text-vit-32-float32-int32.onnx \
-            "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-text-vit-32-float32-int32.onnx"
+          curl -L -o build/models/clip-image-vit-32-float32.onnx "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-image-vit-32-float32.onnx"
+          curl -L -o build/models/clip-text-vit-32-float32-int32.onnx "https://huggingface.co/rocca/openai-clip-js/resolve/main/clip-text-vit-32-float32-int32.onnx"
 
-      # Step 7 — Build Python backend for Mac
-      - name: Build Python backend (Mac)
+      - name: Build Python backend for Mac
         run: |
           cd python_backend
           pyinstaller searchly_server.spec
           mkdir -p ../resources/python_server
           cp -r dist/searchly_server/ ../resources/python_server/
 
-      # Step 8 — Create .env file from GitHub secrets
       - name: Create .env file
         run: |
           echo "CLIENT_ID=${{ secrets.CLIENT_ID }}" >> .env
@@ -65,21 +52,12 @@ jobs:
           echo "PORT=5500" >> .env
           echo "NODE_ENV=production" >> .env
 
-      # Step 9 — Build Electron app for Mac
       - name: Build Mac app
-        run: npm run build:mac
+        run: npx electron-builder --mac --publish never
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      # Step 10 — Upload .dmg to GitHub Release
-      - name: Upload Mac build to Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: dist/*.dmg
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Step 11 — Upload as artifact (for manual trigger)
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
